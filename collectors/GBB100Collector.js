@@ -1,6 +1,8 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 const config = require("../config");
+// ดึงฟังก์ชัน getStatus จาก utils เพื่อลดความซ้ำซ้อน
+const { getStatus } = require("../utils/reportUtils");
 
 // *** เกณฑ์ (Thresholds) อ้างอิงจาก Alarm Settings และค่ามาตรฐาน ***
 const TEMP_LOW_THRESHOLD = 15.0;
@@ -9,33 +11,7 @@ const HUMIDITY_LOW_THRESHOLD = 40.0;
 const HUMIDITY_HIGH_THRESHOLD = 60.0;
 const AC_FAIL_THRESHOLD = 60.0; // นาที (ค่าต้องไม่ต่ำกว่านี้)
 
-/**
- * ตรวจสอบค่าเทียบกับเกณฑ์และให้สถานะ/ข้อความภาษาไทย
- * @param {number|NaN} value - ค่าที่วัดได้ (อาจเป็น NaN หากแปลงไม่ได้)
- * @param {number} low - เกณฑ์ต่ำสุด
- * @param {number} high - เกณฑ์สูงสุด
- * @param {string} unit - หน่วยวัด
- * @returns {object} { status: 'UP'/'UP_W'/'DOWN'/'UNKNOWN', statusText: 'พอดี (OK)'/ 'ต่ำเกินไป'/ 'สูงเกินไป'/ 'ไม่พบข้อมูล' }
- */
-function getStatus(value, low, high, unit) {
-  if (isNaN(value) || value === null || value === "") {
-    return { status: "UNKNOWN", statusText: "ไม่พบข้อมูล/ไม่สามารถอ่านค่าได้" };
-  }
-
-  let statusText = "พอดี (OK)";
-  let status = "UP";
-  if (low !== null && value < low) {
-    statusText = `ต่ำเกินไป (< ${low} ${unit})`;
-    status = "UP_W";
-  } else if (high !== null && value > high) {
-    statusText = `สูงเกินไป (> ${high} ${unit})`;
-    status = "UP_W";
-  } // สถานะไฟฟ้าล้มเหลว (ถือเป็น DOWN หากค่าต่ำกว่าเกณฑ์)
-  if (unit === "นาที" && statusText.includes("ต่ำเกินไป")) {
-    status = "DOWN";
-  }
-  return { status, statusText };
-}
+// *** ลบฟังก์ชัน getStatus ที่ซ้ำซ้อนออกแล้ว ***
 
 async function collectGBB100Status() {
   let overallStatus = "UP";
@@ -57,6 +33,7 @@ async function collectGBB100Status() {
     // ล้างหน่วยวัดทั้งหมดที่อาจติดมา
     return text.replace(" °C", "").replace(" %", "").trim();
   }
+
   const report = {
     name: "GBB100 Environment Monitor",
     category: "Data Center Environment",
