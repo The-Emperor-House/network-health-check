@@ -1,5 +1,6 @@
-const { runNetworkChecks } = require("./collectors/NetworkCollector");
 const { collectGBB100Status } = require("./collectors/GBB100Collector");
+const { collectM365Status } = require("./collectors/M365Collector");
+const { runNetworkChecks } = require("./collectors/NetworkCollector");
 const { collectUnifiHealth } = require("./collectors/UnifiCollector");
 const fs = require("fs");
 const puppeteer = require("puppeteer"); 
@@ -14,6 +15,7 @@ const timestamp = rawCheckTime.toISOString().replace(/[:.]/g, "-");
 
 /**
  * สร้าง HTML Report ธีมสีขาว (Clean White Theme)
+ * ปรับปรุงให้รองรับ Progress Bar สำหรับ M365 License
  */
 function generateHtmlReport() {
     const overallAlerts = getOverallAlerts();
@@ -90,11 +92,18 @@ function generateHtmlReport() {
                 padding: 12px 20px; 
                 display: flex; 
                 justify-content: space-between; 
+                align-items: center; /* จัดให้อยู่กึ่งกลางแนวตั้ง */
                 border-bottom: 1px solid #f9f9f9;
                 font-size: 14px;
             }
             .detail-row:last-child { border-bottom: none; }
             
+            .status-container {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
             .status-tag { 
                 padding: 2px 8px; 
                 border-radius: 4px; 
@@ -105,6 +114,22 @@ function generateHtmlReport() {
             .tag-UP_W { background: #fffbdd; color: #735c0f; }
             .tag-DOWN { background: #ffeef0; color: #b31d28; }
             .tag-HEADER { color: #007bff; font-weight: bold; background: #eef6ff; }
+
+            /* Progress Bar Styles */
+            .progress-bg { 
+                background: #eee; 
+                border-radius: 10px; 
+                width: 60px; 
+                height: 8px; 
+                display: inline-block; 
+                overflow: hidden; 
+                border: 1px solid #f0f0f0;
+            }
+            .progress-bar { 
+                background: #28a745; 
+                height: 100%; 
+                border-radius: 10px; 
+            }
         </style>
     `;
 
@@ -140,10 +165,24 @@ function generateHtmlReport() {
 
         report.details.forEach(detail => {
             const statusClass = `tag-${detail.status}`;
+            
+            // สร้าง Progress Bar เฉพาะที่มีข้อมูล license
+            let progressBarHtml = "";
+            if (detail.license && detail.license.percent !== undefined) {
+                progressBarHtml = `
+                    <div class="progress-bg">
+                        <div class="progress-bar" style="width: ${detail.license.percent}%"></div>
+                    </div>
+                `;
+            }
+
             htmlBody += `
                 <div class="detail-row">
                     <span>${detail.check}</span>
-                    <span class="${statusClass}">${detail.result}</span>
+                    <div class="status-container">
+                        <span class="${statusClass}">${detail.result}</span>
+                        ${progressBarHtml}
+                    </div>
                 </div>
             `;
         });
@@ -163,7 +202,10 @@ async function saveReportAsPng(htmlContent, outputFileName) {
     let browser;
     try {
         console.log("... Generating Clean White Report (PNG)");
-        browser = await puppeteer.launch({ headless: "new" });
+        browser = await puppeteer.launch({ 
+            headless: "new",
+            args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+        });
         const page = await browser.newPage();
         await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
 
@@ -193,6 +235,7 @@ async function runDashboard() {
         collectGBB100Status(),
         runNetworkChecks(),
         collectUnifiHealth(),
+        collectM365Status(),
     ];
     
     const results = await Promise.allSettled(collectorPromises);
@@ -203,7 +246,7 @@ async function runDashboard() {
         }
     });
 
-    // แสดงสรุปใน Console (คงไว้เพื่อดูสถานะเบื้องต้น)
+    // แสดงสรุปใน Console
     const overallAlerts = getOverallAlerts();
     console.log(`\n--- Execution Finished ---`);
     console.log(`Found ${overallAlerts.length} issues.`);
