@@ -1,4 +1,5 @@
 const { collectGBB100Status } = require("./collectors/GBB100Collector");
+const { collectFortigateStatus } = require("./collectors/FortigateCollector");
 const { collectM365Status } = require("./collectors/M365Collector");
 const { runNetworkChecks } = require("./collectors/NetworkCollector");
 const { collectUnifiHealth } = require("./collectors/UnifiCollector");
@@ -234,6 +235,7 @@ async function runDashboard() {
     const collectorPromises = [
         collectGBB100Status(),
         runNetworkChecks(),
+        collectFortigateStatus(),
         collectUnifiHealth(),
         collectM365Status(),
     ];
