@@ -12,7 +12,7 @@ module.exports = {
   // Unifi Controller
   UNIFI: {
     IP: process.env.UNIFI_IP,
-    PORT: 8443,
+    PORT: process.env.UNIFI_PORT || 8443,
     USERNAME: process.env.UNIFI_USERNAME,
     PASSWORD: process.env.UNIFI_PASSWORD,
     CLIENT_THRESHOLD: 150,
