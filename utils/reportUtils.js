@@ -1,116 +1,111 @@
-// utils/reportUtils.js
+/**
+ * utils/reportUtils.js
+ * จัดการเรื่องการตรวจสอบเกณฑ์, การแสดงผล log และการรวบรวมสถานะทั้งหมด
+ */
 
-let overallAlerts = [];
-let overallResults = [];
+// ใช้ Object แทน Array อิสระเพื่อให้จัดการ state ง่ายขึ้น
+const reportState = {
+    alerts: [],
+    results: []
+};
 
 /**
  * ตรวจสอบค่าเทียบกับเกณฑ์และให้สถานะ/ข้อความภาษาไทย
+ * ปรับปรุง: รองรับเกณฑ์แบบ object เพื่อความอ่านง่าย
  */
-function getStatus(value, low, high, unit) {
-  if (isNaN(value) || value === null || value === "") {
-    return { status: "UNKNOWN", statusText: "ไม่พบข้อมูล/ไม่สามารถอ่านค่าได้" };
-  }
+function getStatus(value, low, high, unit = "") {
+    if (value === undefined || value === null || value === "" || isNaN(value)) {
+        return { status: "UNKNOWN", statusText: "ไม่พบข้อมูล/ไม่สามารถอ่านค่าได้" };
+    }
 
-  let statusText = "พอดี (OK)";
-  let status = "UP";
-  if (low !== null && value < low) {
-    statusText = `ต่ำเกินไป (< ${low} ${unit})`;
-    status = "UP_W";
-  } else if (high !== null && value > high) {
-    statusText = `สูงเกินไป (> ${high} ${unit})`;
-    status = "UP_W";
-  }
+    let statusText = "พอดี (OK)";
+    let status = "UP";
 
-  // สถานะไฟฟ้าล้มเหลว (ถือเป็น DOWN หากค่าต่ำกว่าเกณฑ์)
-  if (unit === "นาที" && statusText.includes("ต่ำเกินไป")) {
-    status = "DOWN";
-  }
-  return { status, statusText };
+    if (low !== null && value < low) {
+        statusText = `ต่ำเกินไป (< ${low} ${unit})`.trim();
+        // เงื่อนไขพิเศษ: ถ้าเป็นหน่วยนาที (AC Fail) และต่ำกว่าเกณฑ์ ให้ถือว่าวิกฤต (DOWN)
+        status = (unit === "นาที") ? "DOWN" : "UP_W";
+    } else if (high !== null && value > high) {
+        statusText = `สูงเกินไป (> ${high} ${unit})`.trim();
+        status = "UP_W";
+    }
+
+    return { status, statusText };
 }
 
 /**
- * จัดเรียงรายละเอียดผลลัพธ์ย่อย (ไม่ได้ถูกใช้ใน logReportAndCollectAlerts แล้ว)
- * (ยังคงเก็บไว้เผื่อ Collector ตัวอื่นต้องการใช้การเรียงนี้)
- */
-function sortReportDetails(details) {
-    return details.sort((a, b) => {
-        // 1. ให้ 'HEADER' มาก่อน
-        if (a.status === 'HEADER' && b.status !== 'HEADER') return -1;
-        if (b.status === 'HEADER' && a.status !== 'HEADER') return 1;
-
-        // 2. ให้ 'INFO' มาหลัง 'HEADER'
-        if (a.status === 'INFO' && b.status !== 'INFO' && b.status !== 'HEADER') return 1;
-        if (b.status === 'INFO' && a.status !== 'INFO' && a.status !== 'HEADER') return -1;
-        
-        // 3. เรียงตามชื่อรายการ (check)
-        return a.check.localeCompare(b.check);
-    });
-}
-
-/**
- * ฟังก์ชันแสดงผลใน console และรวบรวม Alert (ใช้ลำดับที่ Collector ส่งมา)
+ * ฟังก์ชันแสดงผลใน console และรวบรวม Alert
+ * ปรับปรุง: แยก Logic การเลือก Icon และการ Format ข้อความให้เป็นระเบียบ
  */
 function logReportAndCollectAlerts(report) {
-    const icon =
-        report.status === "UP" ? "✅" : report.status === "UP_W" ? "⚠️" : "❌";
+    const STATUS_ICONS = {
+        UP: "✅",
+        UP_W: "⚠️",
+        DOWN: "❌",
+        HEADER: "🔽",
+        INFO: "ℹ️",
+        UNKNOWN: "❓"
+    };
+
+    const overallIcon = STATUS_ICONS[report.status] || STATUS_ICONS.UNKNOWN;
     
     // --- Console Output Header ---
-    console.log(
-        `\n=============================================================================`
-    );
-    console.log(
-        `--- ${icon} ${report.name.padEnd(50)} [Status: ${report.status}] ---`
-    );
-    console.log(
-        `=============================================================================`
-    );
+    console.log(`\n${"=".repeat(80)}`);
+    console.log(`--- ${overallIcon} ${report.name.padEnd(55)} [Status: ${report.status}] ---`);
+    console.log(`${"=".repeat(80)}`);
 
-    // *** ใช้ report.details โดยตรง ไม่มีการจัดเรียงซ้ำ ***
     report.details.forEach((detail) => { 
-        // จัดการ Icon สำหรับการแสดงผลใน Log
-        let detailIcon;
-        if (detail.status === "UP") detailIcon = "  ";
-        else if (detail.status === "UP_W") detailIcon = "⚠️";
-        else if (detail.status === "DOWN") detailIcon = "❌";
-        else if (detail.status === "HEADER") detailIcon = "🔽";
-        else detailIcon = "ℹ️"; // INFO
+        let detailIcon = STATUS_ICONS[detail.status] || "  ";
+        if (detail.status === "UP") detailIcon = "  "; // เพื่อความสะอาดของสายตา
 
-        const checkText = detail.status === 'HEADER' || detail.status === 'INFO'
-            ? detail.check
-            : detail.check.padEnd(45);
+        // การจัด Format บรรทัด
+        const isStructural = detail.status === 'HEADER' || detail.status === 'INFO';
+        const checkText = isStructural ? detail.check : detail.check.padEnd(45);
+        const separator = isStructural ? "" : " : ";
 
-        console.log(`${detailIcon} ${checkText} : ${detail.result}`);
+        console.log(`${detailIcon} ${checkText}${separator}${detail.result}`);
 
         // --- Collect Alerts ---
-        const isAlert = detail.status === 'DOWN' || detail.status === 'UP_W';
-        const isNotHeaderOrInfo = detail.status !== 'HEADER' && detail.status !== 'INFO';
-
-        if (isAlert && isNotHeaderOrInfo) {
-            overallAlerts.push({
+        // เก็บเฉพาะรายการที่ผิดปกติ และไม่ใช่ตัวคั่น (Header/Info)
+        const isAlert = ["DOWN", "UP_W", "UNKNOWN"].includes(detail.status);
+        if (isAlert && !isStructural) {
+            reportState.alerts.push({
                 status: detail.status,
                 name: report.name,
-                category: report.category,
+                category: report.category || "General",
                 check: detail.check,
                 result: detail.result,
+                timestamp: new Date().toISOString()
             });
         }
     });
-    overallResults.push(report);
+
+    reportState.results.push(report);
 }
 
-// ฟังก์ชันสำหรับส่งค่าที่รวบรวมไปให้ไฟล์อื่น
+/**
+ * ฟังก์ชันสำหรับดึงข้อมูลสรุป
+ */
 function getOverallAlerts() {
-    return overallAlerts;
+    return reportState.alerts;
 }
 
 function getOverallResults() {
-    return overallResults;
+    return reportState.results;
 }
 
+/**
+ * ล้างข้อมูล (ใช้กรณีเริ่มรอบการรันใหม่)
+ */
+function clearState() {
+    reportState.alerts = [];
+    reportState.results = [];
+}
 
 module.exports = {
     getStatus,
     logReportAndCollectAlerts,
     getOverallAlerts,
     getOverallResults,
+    clearState
 };

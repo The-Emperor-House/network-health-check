@@ -20,8 +20,7 @@ module.exports = {
 
   // Basic Network Checks
   NETWORK_CHECKS: [
-
-     // --- อุปกรณ์ปลายทาง/เครื่องพิมพ์ (Printer & End-point Devices) ---
+    // --- อุปกรณ์ปลายทาง/เครื่องพิมพ์ (Printer & End-point Devices) ---
     {
       category: "Printer Device",
       type: "Ping",
@@ -136,7 +135,7 @@ module.exports = {
       name: "Ping Server EMPSVR03",
       target: "192.168.9.243",
     },
-        {
+    {
       category: "Server System",
       type: "Ping",
       name: " Ping CD-Organize",
