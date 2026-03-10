@@ -1,140 +1,226 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>IT Health Dashboard</title>
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
-        .tag-UP { background: #e6ffed; color: #22863a; }
-        .tag-UP_W { background: #fffbdd; color: #735c0f; }
-        .tag-DOWN { background: #ffeef0; color: #b31d28; }
-        .tag-HEADER { color: #007bff; font-weight: bold; background: #eef6ff; }
-        /* สไตล์เพิ่มเติมสำหรับปุ่ม */
-        #export-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+      .tag-UP {
+        background: #e6ffed;
+        color: #22863a;
+      }
+      .tag-UP_W {
+        background: #fffbdd;
+        color: #735c0f;
+      }
+      .tag-DOWN {
+        background: #ffeef0;
+        color: #b31d28;
+      }
+      .tag-HEADER {
+        color: #007bff;
+        font-weight: bold;
+        background: #eef6ff;
+      }
+      /* สไตล์เพิ่มเติมสำหรับปุ่ม */
+      #export-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
     </style>
-</head>
-<body class="bg-gray-50 text-gray-800 p-4 md:p-10">
-    <div id="dashboard-content" class="max-w-5xl mx-auto bg-white rounded-xl shadow-lg border border-gray-100 p-6 md:p-8">
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-            <div>
-                <h1 class="text-3xl font-bold border-l-8 border-blue-600 pl-4">IT System Health</h1>
-                <p class="text-gray-400 text-sm mt-1">Last Update: <span id="last-update">Loading...</span></p>
-            </div>
-            
-            <div class="flex items-center gap-3">
-                <button id="export-btn" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all">
-                    <span>📸</span> Export PNG
-                </button>
-                <div id="connection-status" class="px-3 py-1 bg-green-100 text-green-700 rounded text-xs font-bold uppercase">Connected</div>
-            </div>
+  </head>
+  <body class="bg-gray-50 text-gray-800 p-4 md:p-10">
+    <div
+      id="dashboard-content"
+      class="max-w-5xl mx-auto bg-white rounded-xl shadow-lg border border-gray-100 p-6 md:p-8"
+    >
+      <div
+        class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4"
+      >
+        <div>
+          <h1 class="text-3xl font-bold border-l-8 border-blue-600 pl-4">
+            IT System Health
+          </h1>
+          <p class="text-gray-400 text-sm mt-1">
+            Last Update: <span id="last-update">Loading...</span>
+          </p>
         </div>
 
-        <div class="mb-10">
-            <h2 class="text-xl font-semibold mb-4 text-gray-700">Summary of Issues</h2>
-            <div id="alerts-container" class="bg-gray-50 rounded-lg p-4 border border-gray-100 min-h-[60px]">
-                </div>
-        </div>
+        <div class="flex items-center gap-3">
+          <button
+            id="refresh-btn"
+            class="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+          >
+            <span>🔄</span> Refresh
+          </button>
 
-        <div id="systems-container" class="grid grid-cols-1 gap-6">
-            </div>
+          <button
+            id="export-btn"
+            class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+          >
+            <span>📸</span> Export PNG
+          </button>
+          <div
+            id="connection-status"
+            class="px-3 py-1 bg-green-100 text-green-700 rounded text-xs font-bold uppercase"
+          >
+            Connected
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-10">
+        <h2 class="text-xl font-semibold mb-4 text-gray-700">
+          Summary of Issues
+        </h2>
+        <div
+          id="alerts-container"
+          class="bg-gray-50 rounded-lg p-4 border border-gray-100 min-h-[60px]"
+        ></div>
+      </div>
+
+      <div id="systems-container" class="grid grid-cols-1 gap-6"></div>
     </div>
 
     <script>
-        const socket = io();
-        const alertsContainer = document.getElementById('alerts-container');
-        const systemsContainer = document.getElementById('systems-container');
-        const lastUpdateSpan = document.getElementById('last-update');
-        const exportBtn = document.getElementById('export-btn');
+      const socket = io();
+      const alertsContainer = document.getElementById("alerts-container");
+      const systemsContainer = document.getElementById("systems-container");
+      const lastUpdateSpan = document.getElementById("last-update");
+      const exportBtn = document.getElementById("export-btn");
+      const refreshBtn = document.getElementById("refresh-btn");
 
-        function renderDashboard(data) {
-            lastUpdateSpan.innerText = data.lastUpdate;
-            
-            // 1. Render Alerts
-            if (data.alerts && data.alerts.length > 0) {
-                alertsContainer.innerHTML = data.alerts.map(alert => `
-                    <div class="${alert.status === 'UP_W' ? 'text-yellow-600' : 'text-red-600'} py-2 border-b border-white text-sm font-medium">
+      function renderDashboard(data) {
+        lastUpdateSpan.innerText = data.lastUpdate;
+
+        // 1. Render Alerts
+        if (data.alerts && data.alerts.length > 0) {
+          alertsContainer.innerHTML = data.alerts
+            .map(
+              (alert) => `
+                    <div class="${alert.status === "UP_W" ? "text-yellow-600" : "text-red-600"} py-2 border-b border-white text-sm font-medium">
                         • [${alert.category}] ${alert.name}: ${alert.check} - ${alert.result}
                     </div>
-                `).join('');
-            } else {
-                alertsContainer.innerHTML = '<div class="text-green-600 font-bold">✔ All systems operational.</div>';
-            }
+                `,
+            )
+            .join("");
+        } else {
+          alertsContainer.innerHTML =
+            '<div class="text-green-600 font-bold">✔ All systems operational.</div>';
+        }
 
-            // 2. Render System Cards
-            systemsContainer.innerHTML = data.results.map(report => `
+        // 2. Render System Cards
+        systemsContainer.innerHTML = data.results
+          .map(
+            (report) => `
                 <div class="border border-gray-100 rounded-lg overflow-hidden shadow-sm">
                     <div class="bg-gray-50 px-5 py-3 flex justify-between items-center border-b border-gray-100 font-bold">
                         <span>${report.name}</span>
                         <span class="tag-${report.status} px-2 py-1 rounded text-[10px]">${report.status}</span>
                     </div>
                     <div class="divide-y divide-gray-50">
-                        ${report.details.map(detail => `
-                            <div class="px-5 py-3 flex justify-between items-center text-sm ${detail.status === 'HEADER' ? 'bg-blue-50/30' : ''}">
-                                <span class="${detail.status === 'HEADER' ? 'font-bold text-blue-600' : ''}">${detail.check}</span>
+                        ${report.details
+                          .map(
+                            (detail) => `
+                            <div class="px-5 py-3 flex justify-between items-center text-sm ${detail.status === "HEADER" ? "bg-blue-50/30" : ""}">
+                                <span class="${detail.status === "HEADER" ? "font-bold text-blue-600" : ""}">${detail.check}</span>
                                 <div class="flex items-center gap-3">
-                                    ${detail.status !== 'HEADER' ? `<span class="tag-${detail.status} px-2 py-0.5 rounded text-[11px] font-medium">${detail.result}</span>` : ''}
-                                    ${detail.license ? `
+                                    ${detail.status !== "HEADER" ? `<span class="tag-${detail.status} px-2 py-0.5 rounded text-[11px] font-medium">${detail.result}</span>` : ""}
+                                    ${
+                                      detail.license
+                                        ? `
                                         <div class="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
                                             <div class="h-full bg-green-500" style="width: ${detail.license.percent}%"></div>
                                         </div>
-                                    ` : ''}
+                                    `
+                                        : ""
+                                    }
                                 </div>
                             </div>
-                        `).join('')}
+                        `,
+                          )
+                          .join("")}
                     </div>
                 </div>
-            `).join('');
+            `,
+          )
+          .join("");
+      }
+
+      // Logic สำหรับการ Export รูปภาพ
+      exportBtn.addEventListener("click", () => {
+        exportBtn.disabled = true;
+        exportBtn.innerHTML = "<span>⏳</span> Generating...";
+
+        const dashboard = document.getElementById("dashboard-content");
+
+        html2canvas(dashboard, {
+          scale: 2, // เพิ่มความละเอียดภาพเป็น 2 เท่า
+          useCORS: true,
+          backgroundColor: "#ffffff", // กำหนดพื้นหลังเป็นสีขาว
+        })
+          .then((canvas) => {
+            const link = document.createElement("a");
+            const timeStr = new Date()
+              .toISOString()
+              .replace(/[:.]/g, "-")
+              .slice(0, 19);
+            link.download = `IT-Health-Report-${timeStr}.png`;
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+
+            exportBtn.disabled = false;
+            exportBtn.innerHTML = "<span>📸</span> Export PNG";
+          })
+          .catch((err) => {
+            console.error("Export error:", err);
+            alert("ไม่สามารถสร้างรูปภาพได้");
+            exportBtn.disabled = false;
+            exportBtn.innerHTML = "<span>📸</span> Export PNG";
+          });
+      });
+
+      refreshBtn.addEventListener("click", async () => {
+        refreshBtn.disabled = true;
+        refreshBtn.innerHTML = "<span>⏳</span> Checking...";
+
+        try {
+          // เรียก API ไปที่ Server เพื่อสั่งให้รัน monitorTask ทันที
+          await fetch("/api/trigger-check", { method: "POST" });
+          // ข้อมูลจะถูกส่งมาทาง Socket.io เองเมื่อตรวจเสร็จ
+        } catch (err) {
+          console.error("Refresh failed");
+        } finally {
+          refreshBtn.disabled = false;
+          refreshBtn.innerHTML = "<span>🔄</span> Refresh";
         }
+      });
 
-        // Logic สำหรับการ Export รูปภาพ
-        exportBtn.addEventListener('click', () => {
-            exportBtn.disabled = true;
-            exportBtn.innerHTML = '<span>⏳</span> Generating...';
+      // โหลดข้อมูลครั้งแรก
+      fetch("/api/status")
+        .then((res) => res.json())
+        .then(renderDashboard);
 
-            const dashboard = document.getElementById('dashboard-content');
-            
-            html2canvas(dashboard, {
-                scale: 2, // เพิ่มความละเอียดภาพเป็น 2 เท่า
-                useCORS: true,
-                backgroundColor: '#ffffff' // กำหนดพื้นหลังเป็นสีขาว
-            }).then(canvas => {
-                const link = document.createElement('a');
-                const timeStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-                link.download = `IT-Health-Report-${timeStr}.png`;
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-                
-                exportBtn.disabled = false;
-                exportBtn.innerHTML = '<span>📸</span> Export PNG';
-            }).catch(err => {
-                console.error('Export error:', err);
-                alert('ไม่สามารถสร้างรูปภาพได้');
-                exportBtn.disabled = false;
-                exportBtn.innerHTML = '<span>📸</span> Export PNG';
-            });
-        });
+      // รับข้อมูลอัปเดตผ่าน Socket
+      socket.on("update-dashboard", (data) => {
+        console.log("Update received!");
+        renderDashboard(data);
+      });
 
-        // โหลดข้อมูลครั้งแรก
-        fetch('/api/status').then(res => res.json()).then(renderDashboard);
+      socket.on("connect", () => {
+        document.getElementById("connection-status").innerText = "Connected";
+        document.getElementById("connection-status").className =
+          "px-3 py-1 bg-green-100 text-green-700 rounded text-xs font-bold uppercase";
+      });
 
-        // รับข้อมูลอัปเดตผ่าน Socket
-        socket.on('update-dashboard', (data) => {
-            console.log('Update received!');
-            renderDashboard(data);
-        });
-
-        socket.on('connect', () => {
-            document.getElementById('connection-status').innerText = 'Connected';
-            document.getElementById('connection-status').className = 'px-3 py-1 bg-green-100 text-green-700 rounded text-xs font-bold uppercase';
-        });
-        
-        socket.on('disconnect', () => {
-            document.getElementById('connection-status').innerText = 'Disconnected';
-            document.getElementById('connection-status').className = 'px-3 py-1 bg-red-100 text-red-700 rounded text-xs font-bold uppercase';
-        });
+      socket.on("disconnect", () => {
+        document.getElementById("connection-status").innerText = "Disconnected";
+        document.getElementById("connection-status").className =
+          "px-3 py-1 bg-red-100 text-red-700 rounded text-xs font-bold uppercase";
+      });
     </script>
-</body>
+  </body>
 </html>

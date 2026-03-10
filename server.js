@@ -57,7 +57,7 @@ async function monitorTask() {
 
     // ส่งข้อมูลใหม่ไปที่หน้าเว็บทันทีผ่าน Socket.io
     io.emit("update-dashboard", data);
-    console.log("📡 Data pushed to dashboard.");
+    // console.log("📡 Data pushed to dashboard.");
 }
 
 // รันครั้งแรกทันทีที่เปิด Server
@@ -72,6 +72,12 @@ app.get("/api/status", (req, res) => {
         alerts: getOverallAlerts(),
         lastUpdate: new Date().toLocaleString("th-TH")
     });
+});
+
+app.post("/api/trigger-check", async (req, res) => {
+    // รัน monitorTask ทันทีโดยไม่รอรอบ setInterval
+    await monitorTask();
+    res.json({ success: true });
 });
 
 server.listen(PORT, () => {
