@@ -50,9 +50,9 @@ function logReportAndCollectAlerts(report) {
     const overallIcon = STATUS_ICONS[report.status] || STATUS_ICONS.UNKNOWN;
     
     // --- Console Output Header ---
-    console.log(`\n${"=".repeat(80)}`);
-    console.log(`--- ${overallIcon} ${report.name.padEnd(55)} [Status: ${report.status}] ---`);
-    console.log(`${"=".repeat(80)}`);
+    // console.log(`\n${"=".repeat(80)}`);
+    // console.log(`--- ${overallIcon} ${report.name.padEnd(55)} [Status: ${report.status}] ---`);
+    // console.log(`${"=".repeat(80)}`);
 
     report.details.forEach((detail) => { 
         let detailIcon = STATUS_ICONS[detail.status] || "  ";
@@ -63,7 +63,7 @@ function logReportAndCollectAlerts(report) {
         const checkText = isStructural ? detail.check : detail.check.padEnd(45);
         const separator = isStructural ? "" : " : ";
 
-        console.log(`${detailIcon} ${checkText}${separator}${detail.result}`);
+        // console.log(`${detailIcon} ${checkText}${separator}${detail.result}`);
 
         // --- Collect Alerts ---
         // เก็บเฉพาะรายการที่ผิดปกติ และไม่ใช่ตัวคั่น (Header/Info)
