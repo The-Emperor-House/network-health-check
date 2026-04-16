@@ -21,7 +21,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3002;
 const CHECK_INTERVAL = 5 * 60 * 1000; // รันทุก 5 นาที
 
 app.use(express.static(path.join(__dirname, "public")));
