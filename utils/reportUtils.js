@@ -1,32 +1,40 @@
 /**
  * utils/reportUtils.js
- * จัดการเรื่องการตรวจสอบเกณฑ์, การแสดงผล log และการรวบรวมสถานะทั้งหมด
+ * จัดการเรื่องการตรวจสอบเกณฑ์, การรวบรวมสถานะ และการจัดการ Alert ทั้งหมด
  */
 
-// ใช้ Object แทน Array อิสระเพื่อให้จัดการ state ง่ายขึ้น
-const reportState = {
+// ใช้ Object เก็บสถานะการรันในรอบปัจจุบัน
+let reportState = {
     alerts: [],
-    results: []
+    results: [],
+    startTime: null
 };
 
 /**
  * ตรวจสอบค่าเทียบกับเกณฑ์และให้สถานะ/ข้อความภาษาไทย
- * ปรับปรุง: รองรับเกณฑ์แบบ object เพื่อความอ่านง่าย
+ * @param {number} value - ค่าที่วัดได้
+ * @param {number|null} low - เกณฑ์ต่ำสุด
+ * @param {number|null} high - เกณฑ์สูงสุด
+ * @param {string} unit - หน่วยนับ
  */
 function getStatus(value, low, high, unit = "") {
+    // ตรวจสอบค่าว่างหรือ NaN [cite: 2026-02-23]
     if (value === undefined || value === null || value === "" || isNaN(value)) {
-        return { status: "UNKNOWN", statusText: "ไม่พบข้อมูล/ไม่สามารถอ่านค่าได้" };
+        return { status: "UNKNOWN", statusText: "ไม่พบข้อมูล/เซนเซอร์ขัดข้อง" };
     }
 
-    let statusText = "พอดี (OK)";
+    let statusText = "ปกติ (OK)";
     let status = "UP";
 
+    // ตรวจสอบเกณฑ์ต่ำเกินไป
     if (low !== null && value < low) {
-        statusText = `ต่ำเกินไป (< ${low} ${unit})`.trim();
-        // เงื่อนไขพิเศษ: ถ้าเป็นหน่วยนาที (AC Fail) และต่ำกว่าเกณฑ์ ให้ถือว่าวิกฤต (DOWN)
+        statusText = `ต่ำเกินไป (${value} < ${low} ${unit})`.trim();
+        // เงื่อนไขพิเศษ: ถ้าเป็นหน่วยนาที (AC Fail) ต่ำกว่าเกณฑ์ถือว่าวิกฤต (DOWN) [cite: 2026-02-23]
         status = (unit === "นาที") ? "DOWN" : "UP_W";
-    } else if (high !== null && value > high) {
-        statusText = `สูงเกินไป (> ${high} ${unit})`.trim();
+    } 
+    // ตรวจสอบเกณฑ์สูงเกินไป
+    else if (high !== null && value > high) {
+        statusText = `สูงเกินไป (${value} > ${high} ${unit})`.trim();
         status = "UP_W";
     }
 
@@ -34,78 +42,76 @@ function getStatus(value, low, high, unit = "") {
 }
 
 /**
- * ฟังก์ชันแสดงผลใน console และรวบรวม Alert
- * ปรับปรุง: แยก Logic การเลือก Icon และการ Format ข้อความให้เป็นระเบียบ
+ * บันทึกรายงานและรวบรวมรายการที่มีปัญหา (Alerts)
+ * @param {object} report - รายงานจาก Collector
  */
 function logReportAndCollectAlerts(report) {
     const STATUS_ICONS = {
         UP: "✅",
         UP_W: "⚠️",
         DOWN: "❌",
-        HEADER: "🔽",
+        HEADER: "🔹",
         INFO: "ℹ️",
         UNKNOWN: "❓"
     };
 
-    const overallIcon = STATUS_ICONS[report.status] || STATUS_ICONS.UNKNOWN;
-    
-    // --- Console Output Header ---
-    // console.log(`\n${"=".repeat(80)}`);
-    // console.log(`--- ${overallIcon} ${report.name.padEnd(55)} [Status: ${report.status}] ---`);
-    // console.log(`${"=".repeat(80)}`);
+    // ใส่ Timestamp ให้แต่ละรายละเอียดถ้ายังไม่มี
+    const now = new Date().toISOString();
 
     report.details.forEach((detail) => { 
-        let detailIcon = STATUS_ICONS[detail.status] || "  ";
-        if (detail.status === "UP") detailIcon = "  "; // เพื่อความสะอาดของสายตา
+        // ตรวจสอบว่าเป็นรายการที่ต้องแจ้งเตือนหรือไม่ (DOWN, UP_W, UNKNOWN) [cite: 2026-02-23]
+        const isProblematic = ["DOWN", "UP_W", "UNKNOWN"].includes(detail.status);
+        const isNotStructural = !["HEADER", "INFO"].includes(detail.status);
 
-        // การจัด Format บรรทัด
-        const isStructural = detail.status === 'HEADER' || detail.status === 'INFO';
-        const checkText = isStructural ? detail.check : detail.check.padEnd(45);
-        const separator = isStructural ? "" : " : ";
-
-        // console.log(`${detailIcon} ${checkText}${separator}${detail.result}`);
-
-        // --- Collect Alerts ---
-        // เก็บเฉพาะรายการที่ผิดปกติ และไม่ใช่ตัวคั่น (Header/Info)
-        const isAlert = ["DOWN", "UP_W", "UNKNOWN"].includes(detail.status);
-        if (isAlert && !isStructural) {
+        if (isProblematic && isNotStructural) {
             reportState.alerts.push({
                 status: detail.status,
+                icon: STATUS_ICONS[detail.status],
                 name: report.name,
                 category: report.category || "General",
                 check: detail.check,
                 result: detail.result,
-                timestamp: new Date().toISOString()
+                timestamp: now
             });
         }
     });
 
-    reportState.results.push(report);
+    reportState.results.push({
+        ...report,
+        processedAt: now
+    });
 }
 
 /**
- * ฟังก์ชันสำหรับดึงข้อมูลสรุป
+ * ฟังก์ชันสำหรับดึงข้อมูลสรุปเพื่อส่งให้ Dashboard
  */
-function getOverallAlerts() {
-    return reportState.alerts;
-}
-
-function getOverallResults() {
-    return reportState.results;
+function getOverallStats() {
+    return {
+        totalChecks: reportState.results.reduce((acc, r) => acc + r.details.length, 0),
+        upCount: reportState.results.filter(r => r.status === "UP").length,
+        warningCount: reportState.results.filter(r => r.status === "UP_W").length,
+        downCount: reportState.results.filter(r => r.status === "DOWN").length,
+        alerts: reportState.alerts,
+        results: reportState.results
+    };
 }
 
 /**
- * ล้างข้อมูล (ใช้กรณีเริ่มรอบการรันใหม่)
+ * ล้างข้อมูลเพื่อเริ่มรอบการทำงานใหม่
  */
 function clearState() {
-    reportState.alerts = [];
-    reportState.results = [];
+    reportState = {
+        alerts: [],
+        results: [],
+        startTime: new Date().toISOString()
+    };
 }
 
 module.exports = {
     getStatus,
     logReportAndCollectAlerts,
-    getOverallAlerts,
-    getOverallResults,
+    getOverallAlerts: () => reportState.alerts,
+    getOverallResults: () => reportState.results,
+    getOverallStats,
     clearState
 };
