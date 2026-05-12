@@ -6,31 +6,64 @@ const { URL } = require('url');
 
 const isWin = process.platform === "win32";
 
+// ฟังก์ชันตรวจเช็กการตอบสนองของอุปกรณ์ด้วยคำสั่ง ping
 function runPingCheck(target) {
     return new Promise((resolve) => {
-        if (!target.target) return resolve({ status: 'DOWN', detail: 'No target IP/Host' });
+        // 1. พยายามดึงจากคีย์มาตรฐานก่อน
+        let destination = target.target || target.host || target.ip || target.url || target.address;
 
+        // 2. 🚨 ถ้าระบบยังหาเลข IP/Host ไม่เจอ (เพราะชื่อคีย์ใน config.js ไม่ตรง)
+        // เราจะทำการแกะเอาจากชื่อของอุปกรณ์ (target.name) เช่น "Ping 8.8.8.8" หรือ "Ping Firewall"
+        if (!destination && target.name) {
+            const nameLower = target.name.toLowerCase();
+            if (nameLower.includes('ping ')) {
+                // ตัดคำว่า 'ping ' ออก แล้วเอาคำข้างหลังมาเป็นเป้าหมายในการปิงแทนทันที
+                destination = target.name.replace(/^[Pp]ing\s+/, '').trim();
+                
+                // ถ้ายัดเยียดวงเล็บมาด้วย เช่น "8.8.8.8 (Internet Check)" ให้ตัดเหลือแค่ 8.8.8.8
+                if (destination.includes('(')) {
+                    destination = destination.split('(')[0].trim();
+                }
+            }
+        }
+
+        // ถ้าปลายทางเป็น URL ให้ถอดเอาเฉพาะ hostname ออกมาปิง
+        if (destination && (destination.startsWith('http://') || destination.startsWith('https://'))) {
+            try {
+                const urlObj = new URL(destination);
+                destination = urlObj.hostname;
+            } catch (e) {}
+        }
+
+        // หากพยายามทุกวิถีทางแล้วยังไม่มีเป้าหมาย ให้ส่งกลับว่า DOWN
+        if (!destination) {
+            return resolve({ status: 'DOWN', detail: 'No target IP/Host' });
+        }
+
+        // 3. ใช้สเปคคำสั่งปิงมาตรฐานที่ทดสอบแล้วว่าผ่านบน Mac ของพิมุกต์แน่ๆ
         const pingCommand = isWin 
-            ? `ping ${target.target} -n 1 -w 1500`
-            : `ping -c 1 -W 2 ${target.target}`;
+            ? `ping ${destination} -n 1 -w 1500`
+            : `ping -c 1 ${destination}`;
         
         exec(pingCommand, (error, stdout, stderr) => {
             let status = 'DOWN';
             let detail = 'Timed Out';
+            
             const out = (stdout + stderr).toLowerCase();
             
-            // ปรับปรุงการตรวจสอบ Success ให้ครอบคลุมหลายภาษา
-            const isSuccess = out.includes('reply from') || out.includes('bytes from') || out.includes('ttl=');
+            // 4. เช็กคีย์เวิร์ดความสำเร็จตามที่ stdout ของพิมุกต์พ่นออกมาเป๊ะๆ (คำว่า 'bytes from')
+            const isSuccess = out.includes('bytes from') || out.includes('ttl=') || out.includes('reply from');
 
-            if (isSuccess) {
+            if (isSuccess && !out.includes('100% packet loss')) {
                 status = 'UP';
-                const matchTime = out.match(/time[=<](\d+(?:\.\d+)?)\s?ms/i);
+                // ดึงค่าความเร็วหน่วย ms ออกมาจากข้อความตอบรับ
+                const matchTime = out.match(/time[=< ](\d+(?:\.\d+)?)\s*ms/i);
                 detail = matchTime ? `${matchTime[1]} ms` : 'Reply OK';
             } else if (out.includes('unreachable')) {
                 detail = 'Unreachable';
             }
 
-            // เงื่อนไขสำหรับ Printer (มักจะ Sleep เพื่อประหยัดไฟ)
+            // เงื่อนไขสำหรับกลุ่ม Printer ตัวเดิมของคุณพิมุกต์
             if (status === 'DOWN' && target.category === 'Printer Device') {
                 status = 'UP_W'; 
                 detail = 'Off/Sleep';
@@ -41,14 +74,18 @@ function runPingCheck(target) {
     });
 }
 
+// ฟังก์ชันตรวจเช็กการเข้าถึงหน้าเว็บ
 function runWebAccessCheck(target) {
     return new Promise((resolve) => {
         try {
-            const urlObj = new URL(target.url);
+            const urlSource = target.url || target.target || target.host;
+            if (!urlSource) return resolve({ status: 'DOWN', detail: 'No URL specified' });
+
+            const urlObj = new URL(urlSource);
             const protocol = urlObj.protocol === 'https:' ? https : http;
             const startTime = process.hrtime();
             
-            const req = protocol.get(target.url, { 
+            const req = protocol.get(urlSource, { 
                 timeout: 8000, 
                 rejectUnauthorized: false 
             }, (res) => { 
@@ -73,21 +110,39 @@ function runWebAccessCheck(target) {
     });
 }
 
+// ฟังก์ชันตรวจเช็กการเชื่อมต่อผ่าน TCP Port
 function runTcpPortCheck(target) {
     return new Promise((resolve) => {
+        const destination = target.target || target.host || target.ip;
+        const port = target.port;
+
+        if (!destination || !port) {
+            return resolve({ status: 'DOWN', detail: 'Missing Port or Host' });
+        }
+
         const socket = new net.Socket();
         const startTime = process.hrtime();
         
         socket.setTimeout(5000); 
+        
         socket.on('connect', () => {
             const diff = process.hrtime(startTime);
             const latencyMs = (diff[0] * 1000 + diff[1] / 1000000).toFixed(0);
             socket.destroy();
             resolve({ status: 'UP', detail: `Open (${latencyMs} ms)` });
         });
-        socket.on('timeout', () => { socket.destroy(); resolve({ status: 'DOWN', detail: 'Timeout' }); });
-        socket.on('error', (e) => { socket.destroy(); resolve({ status: 'DOWN', detail: `Closed (${e.code})` }); });
-        socket.connect(target.port, target.target);
+        
+        socket.on('timeout', () => { 
+            socket.destroy(); 
+            resolve({ status: 'DOWN', detail: 'Timeout' }); 
+        });
+        
+        socket.on('error', (e) => { 
+            socket.destroy(); 
+            resolve({ status: 'DOWN', detail: `Closed (${e.code})` }); 
+        });
+        
+        socket.connect(port, destination);
     });
 }
 
