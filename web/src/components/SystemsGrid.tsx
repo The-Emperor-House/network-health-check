@@ -1,8 +1,12 @@
+import Box from "@mui/material/Box";
+import Grid from "@mui/material/Grid";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import Divider from "@mui/material/Divider";
 import { SystemReport } from "@/types";
 import SystemCard from "./SystemCard";
 
 export default function SystemsGrid({ results }: { results: SystemReport[] }) {
-  // จัดกลุ่มตาม category
   const grouped = results.reduce<Record<string, SystemReport[]>>((acc, report) => {
     const cat = report.category || "General";
     (acc[cat] ??= []).push(report);
@@ -10,25 +14,51 @@ export default function SystemsGrid({ results }: { results: SystemReport[] }) {
   }, {});
 
   return (
-    <div className="space-y-8">
+    <Stack spacing={5}>
       {Object.entries(grouped).map(([category, reports]) => (
-        <section key={category}>
-          {/* Category Heading */}
-          <div className="flex items-center gap-3 mb-4">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] whitespace-nowrap">
+        <Box key={category}>
+          {/* Category heading */}
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 2,
+              mb: 2.5,
+            }}
+          >
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                fontWeight: 800,
+                textTransform: "uppercase",
+                letterSpacing: "0.2em",
+                whiteSpace: "nowrap",
+              }}
+            >
               {category}
-            </h3>
-            <div className="h-px bg-slate-200 flex-grow" />
-          </div>
+            </Typography>
+            <Divider sx={{ flex: 1 }} />
+            <Typography
+              variant="caption"
+              color="text.disabled"
+              sx={{ whiteSpace: "nowrap" }}
+            >
+              {reports.length} system{reports.length !== 1 ? "s" : ""}
+            </Typography>
+          </Box>
 
-          {/* Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {/* Cards grid */}
+          <Grid container spacing={2.5}>
             {reports.map((report, i) => (
-              <SystemCard key={i} report={report} />
+              <Grid key={i} size={{ xs: 12, sm: 6, lg: 4 }}>
+                <SystemCard report={report} />
+              </Grid>
             ))}
-          </div>
-        </section>
+          </Grid>
+        </Box>
       ))}
-    </div>
+    </Stack>
   );
 }

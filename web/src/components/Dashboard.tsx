@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Box from "@mui/material/Box";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import CircularProgress from "@mui/material/CircularProgress";
 import { DashboardData } from "@/types";
 import Header from "./Header";
 import StatsGrid from "./StatsGrid";
@@ -14,6 +18,7 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const socketRef = useRef<any>(null);
 
@@ -35,11 +40,11 @@ export default function Dashboard() {
 
     connect();
 
-    /* Initial load via REST (before socket connects) */
+    /* Initial load via REST */
     fetch(`${BACKEND_URL}/api/status`)
       .then((r) => r.json())
       .then((d) => mounted && setData(d))
-      .catch(() => {/* server not ready yet */});
+      .catch(() => {/* server may not be ready yet */});
 
     return () => {
       mounted = false;
@@ -47,7 +52,7 @@ export default function Dashboard() {
     };
   }, []);
 
-  /* ── Refresh handler ── */
+  /* ── Refresh ── */
   const handleRefresh = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
@@ -56,73 +61,117 @@ export default function Dashboard() {
     } catch (err) {
       console.error("Refresh error:", err);
     } finally {
-      setTimeout(() => setIsRefreshing(false), 2000);
+      setTimeout(() => setIsRefreshing(false), 2_000);
     }
   };
 
-  /* ── Export handler ── */
+  /* ── Export PNG ── */
   const handleExport = async () => {
-    const el = document.getElementById("dashboard-content");
-    if (!el) return;
+    if (isExporting) return;
+    setIsExporting(true);
 
     try {
-      const html2canvas = (await import("html2canvas")).default;
-      const canvas = await html2canvas(el, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#f8fafc",
-        logging: false,
-        height: el.scrollHeight + 60,
-        onclone: (doc) => {
-          const clone = doc.getElementById("dashboard-content");
-          if (clone) {
-            clone.style.overflow = "visible";
-            clone.style.height = "auto";
-            clone.style.padding = "30px";
+      const el = document.getElementById("dashboard-export");
+      if (!el) return;
+
+      const { toPng } = await import("html-to-image");
+
+      /* Temporarily append a generation-time footer */
+      const footer = document.createElement("div");
+      footer.style.cssText = [
+        "text-align:center",
+        "padding:12px 24px",
+        "margin-top:16px",
+        "font-size:11px",
+        "color:#94a3b8",
+        "font-family:Inter,Roboto,sans-serif",
+        "border-top:1px solid #e2e8f0",
+      ].join(";");
+      footer.textContent = `Generated: ${new Date().toLocaleString("th-TH", {
+        dateStyle: "full",
+        timeStyle: "medium",
+      })}`;
+      el.appendChild(footer);
+
+      /* Capture */
+      const dataUrl = await toPng(el, {
+        pixelRatio: 2,
+        backgroundColor: "#f0f4f8",
+        /* Exclude action-buttons from the PNG */
+        filter: (node) => {
+          if (
+            node instanceof HTMLElement &&
+            node.dataset.noExport === "true"
+          ) {
+            return false;
           }
+          return true;
         },
       });
 
+      el.removeChild(footer);
+
+      /* Download */
+      const dateSlug = new Date().toISOString().slice(0, 10);
       const link = document.createElement("a");
-      link.download = `IT-Health-Report-${Date.now()}.png`;
-      link.href = canvas.toDataURL("image/png");
+      link.download = `IT-Health-Report-${dateSlug}.png`;
+      link.href = dataUrl;
       link.click();
     } catch (err) {
       console.error("Export failed:", err);
+    } finally {
+      setIsExporting(false);
     }
   };
 
   return (
-    <div id="dashboard-content" className="max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <Header
-        lastUpdate={data?.lastUpdate}
-        isConnected={isConnected}
-        isRefreshing={isRefreshing}
-        onRefresh={handleRefresh}
-        onExport={handleExport}
-        data={data}
-      />
+    <Box id="dashboard-export" sx={{ maxWidth: 1280, mx: "auto" }}>
+      <Stack spacing={3}>
+        <Header
+          lastUpdate={data?.lastUpdate}
+          isConnected={isConnected}
+          isRefreshing={isRefreshing}
+          isExporting={isExporting}
+          onRefresh={handleRefresh}
+          onExport={handleExport}
+        />
 
-      {data ? (
-        <>
-          <StatsGrid data={data} />
-          <AlertsPanel alerts={data.alerts ?? []} />
-          <SystemsGrid results={data.results ?? []} />
-        </>
-      ) : (
-        /* Loading state */
-        <div className="flex flex-col items-center justify-center py-24 text-slate-400 gap-3">
-          <span className="text-5xl animate-pulse">📡</span>
-          <p className="font-semibold text-base">กำลังเชื่อมต่อ Monitoring Server…</p>
-          <p className="text-sm text-slate-300">
-            รอรับข้อมูลจาก{" "}
-            <code className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-xs">
-              {BACKEND_URL}
-            </code>
-          </p>
-        </div>
-      )}
-    </div>
+        {data ? (
+          <>
+            <StatsGrid data={data} />
+            <AlertsPanel alerts={data.alerts ?? []} />
+            <SystemsGrid results={data.results ?? []} />
+          </>
+        ) : (
+          /* Loading state */
+          <Stack
+            spacing={2}
+            sx={{ py: 18, alignItems: "center", justifyContent: "center" }}
+          >
+            <CircularProgress size={40} thickness={3} />
+            <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 600 }}>
+              กำลังเชื่อมต่อ Monitoring Server…
+            </Typography>
+            <Typography variant="caption" color="text.disabled">
+              รอรับข้อมูลจาก{" "}
+              <Box
+                component="code"
+                sx={{
+                  bgcolor: "grey.100",
+                  color: "text.secondary",
+                  px: 1,
+                  py: 0.25,
+                  borderRadius: 1,
+                  fontSize: "0.72rem",
+                  fontFamily: "monospace",
+                }}
+              >
+                {BACKEND_URL}
+              </Box>
+            </Typography>
+          </Stack>
+        )}
+      </Stack>
+    </Box>
   );
 }

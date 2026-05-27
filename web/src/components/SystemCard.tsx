@@ -1,67 +1,139 @@
+import Card from "@mui/material/Card";
+import CardHeader from "@mui/material/CardHeader";
+import CardContent from "@mui/material/CardContent";
+import Box from "@mui/material/Box";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
 import { DetailItem, SystemReport, Status } from "@/types";
 import StatusBadge from "./StatusBadge";
 
-const cardBorder: Record<string, string> = {
-  UP:      "border-slate-200",
-  UP_W:    "border-amber-200",
-  DOWN:    "border-red-200",
-  UNKNOWN: "border-slate-200",
+const borderAccent: Record<string, string> = {
+  UP:      "#e2e8f0",
+  UP_W:    "#f59e0b",
+  DOWN:    "#ef4444",
+  UNKNOWN: "#e2e8f0",
 };
 
 function DetailRow({ detail }: { detail: DetailItem }) {
+  /* ── Section header ── */
   if (detail.status === "HEADER") {
     return (
-      <div className="px-3 py-1 text-[10px] font-black text-blue-600 uppercase tracking-wide bg-blue-50/60 rounded-md mt-1">
-        {detail.result}
-      </div>
+      <Box
+        sx={{
+          px: 1.5,
+          py: 0.625,
+          bgcolor: "rgba(21,101,192,0.06)",
+          borderRadius: 1.5,
+          mt: 0.75,
+          mb: 0.25,
+        }}
+      >
+        <Typography
+          variant="caption"
+          color="primary"
+          sx={{
+            fontWeight: 800,
+            textTransform: "uppercase",
+            letterSpacing: "0.15em",
+          }}
+        >
+          {detail.result}
+        </Typography>
+      </Box>
     );
   }
 
-  const pulse =
-    detail.status === "DOWN"
-      ? "bg-red-500"
-      : detail.status === "UP_W"
-        ? "bg-amber-400"
-        : null;
+  const hasPulse = detail.status === "DOWN" || detail.status === "UP_W";
 
   return (
-    <div className="px-3 py-1.5 flex justify-between items-center group hover:bg-slate-50 rounded-lg transition-colors">
-      <span className="text-[11px] text-slate-500 font-medium group-hover:text-slate-700 transition-colors truncate mr-3">
+    <Box
+      sx={{
+        px: 1.5,
+        py: 0.625,
+        borderRadius: 1.5,
+        display: "flex",
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        transition: "background-color 0.15s",
+        "&:hover": { bgcolor: "grey.50" },
+      }}
+    >
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        noWrap
+        sx={{ fontWeight: 500, mr: 1, minWidth: 0 }}
+      >
         {detail.check}
-      </span>
-      <div className="flex items-center gap-1.5 shrink-0">
-        <span className="text-[11px] font-bold text-slate-800">{detail.result}</span>
-        {pulse && (
-          <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${pulse}`} />
+      </Typography>
+
+      <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", flexShrink: 0 }}>
+        <Typography variant="caption" color="text.primary" sx={{ fontWeight: 700 }}>
+          {detail.result}
+        </Typography>
+        {hasPulse && (
+          <Box
+            sx={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              bgcolor: detail.status === "DOWN" ? "error.main" : "warning.main",
+              animation: "blink 1.4s ease-in-out infinite",
+              "@keyframes blink": {
+                "0%, 100%": { opacity: 1 },
+                "50%":       { opacity: 0.25 },
+              },
+            }}
+          />
         )}
-      </div>
-    </div>
+      </Stack>
+    </Box>
   );
 }
 
 export default function SystemCard({ report }: { report: SystemReport }) {
   return (
-    <div
-      className={`
-        bg-white border rounded-2xl overflow-hidden shadow-sm flex flex-col
-        transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md
-        ${cardBorder[report.status] ?? "border-slate-200"}
-      `}
+    <Card
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        borderLeft: `3px solid ${borderAccent[report.status] ?? "#e2e8f0"}`,
+        transition: "transform 0.2s ease, box-shadow 0.2s ease",
+        "&:hover": {
+          transform: "translateY(-2px)",
+          boxShadow: "0 6px 20px rgba(0,0,0,0.08)",
+        },
+      }}
     >
-      {/* Card Header */}
-      <div className="px-4 py-3 flex justify-between items-center border-b border-slate-100 bg-slate-50/60">
-        <span className="text-[13px] font-bold text-slate-700 truncate mr-2">
-          {report.name}
-        </span>
-        <StatusBadge status={report.status as Status} />
-      </div>
+      {/* Card header */}
+      <CardHeader
+        title={
+          <Typography variant="body2" color="text.primary" noWrap sx={{ fontWeight: 700 }}>
+            {report.name}
+          </Typography>
+        }
+        action={<StatusBadge status={report.status as Status} />}
+        sx={{
+          px: 2,
+          py: 1.25,
+          bgcolor: "grey.50",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          "& .MuiCardHeader-action": { mt: 0.375, mr: 0 },
+          "& .MuiCardHeader-content": { minWidth: 0 },
+        }}
+      />
 
-      {/* Details */}
-      <div className="p-2 space-y-0.5">
-        {report.details.map((detail, i) => (
-          <DetailRow key={i} detail={detail} />
-        ))}
-      </div>
-    </div>
+      {/* Detail rows */}
+      <CardContent sx={{ p: 1, "&:last-child": { pb: 1 }, flex: 1 }}>
+        <Stack spacing={0}>
+          {report.details.map((detail, i) => (
+            <DetailRow key={i} detail={detail} />
+          ))}
+        </Stack>
+      </CardContent>
+    </Card>
   );
 }
